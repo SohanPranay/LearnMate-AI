@@ -9,13 +9,10 @@ import {
   CheckCircle2,
   ChevronRight,
   ClipboardList,
-  LayoutDashboard,
   Loader2,
-  Menu,
   Sparkles,
   Target,
   TrendingUp,
-  X,
 } from "lucide-react";
 
 type CurrentSkill = "Beginner" | "Intermediate" | "Advanced";
@@ -179,7 +176,7 @@ export default function Home() {
               .then(payload => {
                 setRoadmap(payload.data);
               })
-              .catch(err => {
+              .catch(() => {
                 setError("Failed to refresh data.");
               })
               .finally(() => {

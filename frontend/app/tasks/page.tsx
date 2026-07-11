@@ -11,6 +11,13 @@ interface Task {
   completed: boolean;
 }
 
+interface WeeklyPlanItem {
+  week: number;
+  topic: string;
+  project: string;
+  quiz: string;
+}
+
 export default function TasksPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [newTaskText, setNewTaskText] = useState("");
@@ -26,7 +33,7 @@ export default function TasksPage() {
         const weeklyPlan = payload?.data?.weeklyPlan || [];
         
         const mappedTasks: Task[] = [];
-        weeklyPlan.forEach((w: any, index: number) => {
+        weeklyPlan.forEach((w: WeeklyPlanItem, index: number) => {
           mappedTasks.push({
             id: `t-topic-${index}`,
             text: `Week ${w.week}: Master ${w.topic}`,
