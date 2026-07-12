@@ -17,7 +17,18 @@ import {
 
 type CurrentSkill = "Beginner" | "Intermediate" | "Advanced";
 
+interface StudentData {
+  name: string;
+  careerGoal: string;
+  currentSkill: CurrentSkill;
+  weeklyHours: number;
+  learningStyle: string;
+  preferredLanguage: string;
+  interests: string[];
+}
+
 interface AssessmentData {
+  student?: StudentData;
   skillScore: number;
   difficulty: CurrentSkill;
   knowledgeGaps: string[];
@@ -134,7 +145,7 @@ export default function Home() {
         setRoadmap(roadmapData);
 
         // Load or initialize tasks for the selected stream
-        const careerGoal = (assessmentData as any).student?.careerGoal || "Frontend Developer";
+        const careerGoal = assessmentData.student?.careerGoal || "Frontend Developer";
         const localTasksKey = `tasks_${careerGoal}`;
         const savedTasks = localStorage.getItem(localTasksKey);
         
@@ -143,7 +154,7 @@ export default function Home() {
         } else {
           const weeklyPlan = roadmapData.weeklyPlan || [];
           const mappedTasks: Task[] = [];
-          weeklyPlan.forEach((w: any, index: number) => {
+          weeklyPlan.forEach((w: WeeklyPlanItem, index: number) => {
             mappedTasks.push({
               id: `t-topic-${index}`,
               text: `Week ${w.week}: Master ${w.topic}`,
@@ -233,7 +244,7 @@ export default function Home() {
                     } else {
                       const weeklyPlan = roadmapData?.weeklyPlan || [];
                       const mappedTasks: Task[] = [];
-                      weeklyPlan.forEach((w: any, index: number) => {
+                      weeklyPlan.forEach((w: WeeklyPlanItem, index: number) => {
                         mappedTasks.push({
                           id: `t-topic-${index}`,
                           text: `Week ${w.week}: Master ${w.topic}`,
