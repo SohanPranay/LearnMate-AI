@@ -79,6 +79,7 @@ class ProfileUpdateRequest(BaseModel):
     skills: List[SkillItem]
     languages: List[str]
     skillScore: int
+    name: Optional[str] = None
     careerGoal: Optional[str] = None
     currentSkill: Optional[str] = None
     weeklyHours: Optional[int] = None

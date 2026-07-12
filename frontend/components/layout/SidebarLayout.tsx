@@ -41,7 +41,7 @@ export default function SidebarLayout({ children }: SidebarLayoutProps) {
     } else {
       try {
         setUser(JSON.parse(stored));
-      } catch (e) {
+      } catch {
         localStorage.removeItem("user");
         router.push("/login");
       }

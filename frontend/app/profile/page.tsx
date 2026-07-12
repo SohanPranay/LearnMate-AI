@@ -60,7 +60,6 @@ export default function ProfilePage() {
   const [weeklyHours, setWeeklyHours] = useState(5);
   const [learningStyle, setLearningStyle] = useState("practical");
   const [preferredLanguage, setPreferredLanguage] = useState("English");
-  const [interests, setInterests] = useState<string[]>([]);
   const [interestsText, setInterestsText] = useState("");
 
   // Selected Skills & Spoken Languages
@@ -91,10 +90,9 @@ export default function ProfilePage() {
           setPreferredLanguage(u.preferredLanguage || "English");
           setSelectedSkills(u.skills || []);
           setSelectedLanguages(u.languages || []);
-          setInterests(u.interests || []);
           setInterestsText(u.interests ? u.interests.join(", ") : "");
         }
-      } catch (err) {
+      } catch {
         // Fallback to local storage if server has issue
         setName(userObj.name || "");
         setCareerGoal(userObj.careerGoal || "Frontend Developer");
@@ -104,7 +102,6 @@ export default function ProfilePage() {
         setPreferredLanguage(userObj.preferredLanguage || "English");
         setSelectedSkills(userObj.skills || []);
         setSelectedLanguages(userObj.languages || []);
-        setInterests(userObj.interests || []);
         setInterestsText(userObj.interests ? userObj.interests.join(", ") : "");
       } finally {
         setLoading(false);
@@ -175,6 +172,7 @@ export default function ProfilePage() {
       skills: selectedSkills,
       languages: selectedLanguages,
       skillScore: computedSkillScore,
+      name,
       careerGoal,
       currentSkill,
       weeklyHours: Number(weeklyHours),
@@ -315,6 +313,17 @@ export default function ProfilePage() {
               </h2>
 
               <div className="space-y-3">
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-slate-400">Name</span>
+                  <input
+                    type="text"
+                    className="input-style"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Your Name"
+                  />
+                </label>
+
                 <label className="block">
                   <span className="mb-1 block text-xs font-medium text-slate-400">Career Goal</span>
                   <select
