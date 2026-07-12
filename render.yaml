@@ -11,11 +11,11 @@
 services:
   - type: web
     name: learnmate-backend
-    runtime: node
+    runtime: python
     rootDir: backend
     plan: free
-    buildCommand: npm install && npm run build
-    startCommand: npm start
+    buildCommand: pip install -r requirements.txt
+    startCommand: python run.py
     healthCheckPath: /
     envVars:
       - key: NODE_ENV

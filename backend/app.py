@@ -1,0 +1,269 @@
+import os
+from fastapi import FastAPI, HTTPException, Query, status
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import List, Optional
+
+# Import local services and agents
+import db as mongo_db
+from services.granite_service import call_granite
+from agents.assessment_agent import assess_student
+from agents.planner_agent import generate_roadmap
+from agents.mentor_agent import mentor_reply
+
+app = FastAPI(title="LearnMate AI API", version="1.0.0")
+
+# Replicate Express CORS configuration
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+DEFAULT_ASSESSMENT = {
+    "student": {
+        "name": "Alex",
+        "careerGoal": "Frontend Developer",
+        "currentSkill": "Beginner",
+        "weeklyHours": 8,
+        "learningStyle": "practical",
+        "preferredLanguage": "English",
+        "interests": ["React", "UI design", "Web apps"],
+    },
+    "skillScore": 35,
+    "difficulty": "Beginner",
+    "knowledgeGaps": ["Modern JavaScript basics", "CSS layout systems", "State management"],
+    "strengths": ["Highly structured learner", "Consistent study hours"],
+    "estimatedDuration": "6 Months",
+    "personalizedAdvice": "Start by completing the HTML/CSS layout module. Focus on implementing 3 interactive UI components this week."
+}
+
+# Global in-memory cache, initialized from DB if possible
+latest_assessment = mongo_db.get_latest_assessment()
+
+class StudentProfile(BaseModel):
+    name: str
+    careerGoal: str
+    currentSkill: str
+    weeklyHours: int
+    learningStyle: str
+    preferredLanguage: str
+    interests: List[str]
+
+class ChatHistoryMessage(BaseModel):
+    role: str
+    text: str
+
+class ChatRequest(BaseModel):
+    question: str
+    currentModule: Optional[str] = "this module"
+    skillLevel: Optional[str] = "Beginner"
+    history: Optional[List[ChatHistoryMessage]] = []
+
+@app.get("/")
+def get_root():
+    return {"message": "LearnMate AI Backend Running"}
+
+# --- ASSESSMENT ROUTES ---
+
+@app.get("/api/assessment")
+def get_assessment():
+    global latest_assessment
+    if not latest_assessment:
+        latest_assessment = mongo_db.get_latest_assessment() or DEFAULT_ASSESSMENT
+    return {
+        "success": True,
+        "data": latest_assessment
+    }
+
+@app.post("/api/assessment")
+def submit_assessment(profile: StudentProfile):
+    global latest_assessment
+    try:
+        profile_dict = profile.model_dump()
+        
+        # Call agent logic
+        assessment = assess_student(profile_dict)
+        
+        latest_assessment = {
+            "student": profile_dict,
+            **assessment
+        }
+        
+        # Save to MongoDB Atlas
+        mongo_db.save_assessment(latest_assessment)
+        
+        return {
+            "success": True,
+            "data": latest_assessment
+        }
+    except Exception as e:
+        print("Assessment Submit Error:", e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+# --- ROADMAP ROUTES ---
+
+@app.get("/api/roadmap")
+def get_roadmap_endpoint(
+    careerGoal: Optional[str] = None,
+    currentSkill: Optional[str] = None,
+    weeklyHours: Optional[int] = None,
+    learningStyle: Optional[str] = None,
+    interests: Optional[List[str]] = Query(None)
+):
+    global latest_assessment
+    if not latest_assessment:
+        latest_assessment = mongo_db.get_latest_assessment() or DEFAULT_ASSESSMENT
+        
+    student_profile = latest_assessment.get("student", DEFAULT_ASSESSMENT["student"])
+    
+    goal = careerGoal or student_profile.get("careerGoal", "Frontend Developer")
+    skill = currentSkill or student_profile.get("currentSkill", "Beginner")
+    hours = weeklyHours or student_profile.get("weeklyHours", 5)
+    style = learning_style or student_profile.get("learningStyle", "practical")
+    
+    # Handle array formatting from queries
+    user_interests = interests or student_profile.get("interests", [])
+    
+    VALID_CAREERS = [
+        "Frontend Developer",
+        "Backend Developer",
+        "Cybersecurity",
+        "AI Engineer",
+        "Data Science"
+    ]
+    if goal not in VALID_CAREERS:
+        goal = "Frontend Developer"
+        
+    if skill not in ["Beginner", "Intermediate", "Advanced"]:
+        skill = "Beginner"
+
+    try:
+        # Check cache / db first
+        cached_roadmap = mongo_db.get_latest_roadmap(goal)
+        if cached_roadmap:
+            return {
+                "success": True,
+                "data": cached_roadmap
+            }
+            
+        roadmap = generate_roadmap({
+            "careerGoal": goal,
+            "currentSkill": skill,
+            "weeklyHours": hours,
+            "learningStyle": style,
+            "interests": user_interests
+        })
+        
+        # Save to DB
+        mongo_db.save_roadmap(roadmap, goal)
+        
+        return {
+            "success": True,
+            "data": roadmap
+        }
+    except Exception as e:
+        print("Roadmap Generation Error:", e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to generate roadmap."
+        )
+
+@app.patch("/api/roadmap")
+def patch_roadmap():
+    return {
+        "success": True,
+        "message": "Roadmap updated successfully."
+    }
+
+# --- CHAT ROUTES ---
+
+@app.get("/api/chat")
+def get_chat():
+    return {
+        "success": True,
+        "data": {
+            "answer": "Hello! I'm MentorAI, powered by IBM Granite. Ask me anything about your learning journey.",
+            "tips": [
+                "Practice every day",
+                "Build projects",
+                "Revise consistently"
+            ],
+            "resources": [
+                "IBM SkillsBuild",
+                "MDN Docs",
+                "freeCodeCamp"
+            ],
+            "nextAction": "Complete today's roadmap task."
+        }
+    }
+
+@app.post("/api/chat")
+def post_chat(req: ChatRequest):
+    try:
+        # Prepare variables
+        question = req.question.strip()
+        current_module = req.currentModule or "this module"
+        skill_level = req.skillLevel or "Beginner"
+        
+        if skill_level not in ["Beginner", "Intermediate", "Advanced"]:
+            skill_level = "Beginner"
+
+        if not question:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="A 'question' field is required."
+            )
+
+        # Call Local Fallback Mentor Reply
+        mentor = mentor_reply({
+            "question": question,
+            "currentModule": current_module,
+            "skillLevel": skill_level
+        })
+
+        answer = mentor["answer"]
+
+        try:
+            # Construct Granite conversational thread prompt
+            history_prompt = ""
+            for h in req.history:
+                role_label = "Student" if h.role == "user" else "Mentor"
+                history_prompt += f"{role_label}: {h.text}\n"
+
+            granite_prompt = f"""You are MentorAI, a friendly, encouraging, and highly intelligent learning mentor built on IBM Granite.
+The student is at a {skill_level} level studying {current_module}.
+Here is the chat history between the Student and the Mentor:
+{history_prompt}Student: {question}
+Mentor (reply in under 120 words):"""
+
+            granite_res = call_granite(granite_prompt)
+            granite_text = granite_res["data"]["text"].strip()
+            if granite_text:
+                answer = granite_text
+        except Exception as e:
+            # Watsonx error, fallback to offline reply
+            print("Watsonx generation failed, falling back to local responder:", e)
+
+        return {
+            "success": True,
+            "data": {
+                "answer": answer,
+                "tips": mentor["tips"],
+                "resources": mentor["resources"],
+                "nextAction": mentor["nextAction"]
+            }
+        }
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        print("Chat Error:", e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Mentor is unavailable right now."
+        )
