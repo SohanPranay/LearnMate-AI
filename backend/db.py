@@ -73,3 +73,31 @@ def get_latest_roadmap(career_goal: str) -> dict:
         except Exception as e:
             print(f"Failed to get roadmap from MongoDB: {e}")
     return None
+
+# --- AUTH HELPER FUNCTIONS ---
+
+IN_MEMORY_USERS = {}
+
+def save_user(user_doc: dict):
+    if db is not None:
+        try:
+            db.users.insert_one(user_doc)
+        except Exception as e:
+            print(f"Failed to save user to MongoDB: {e}")
+    else:
+        email = user_doc.get("email", "").strip().lower()
+        IN_MEMORY_USERS[email] = user_doc
+
+def find_user_by_email(email: str) -> dict:
+    email_clean = email.strip().lower()
+    if db is not None:
+        try:
+            doc = db.users.find_one({"email": email_clean})
+            if doc:
+                doc.pop("_id", None)
+                return doc
+        except Exception as e:
+            print(f"Failed to find user by email: {e}")
+    else:
+        return IN_MEMORY_USERS.get(email_clean)
+    return None
