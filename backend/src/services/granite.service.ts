@@ -80,7 +80,7 @@ async function getIamToken(): Promise<string> {
 
 function buildGranitePayload(prompt: string) {
   return {
-    model_id: process.env.IBM_GRANITE_MODEL_ID?.trim() || "ibm/granite-13b-instruct-v2",
+    model_id: process.env.IBM_GRANITE_MODEL_ID?.trim() || "ibm/granite-3-8b-instruct",
     input: prompt,
     parameters: {
       decoding_method: "greedy",
