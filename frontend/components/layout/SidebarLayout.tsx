@@ -1,8 +1,6 @@
-"use client";
-
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   BrainCircuit,
@@ -12,6 +10,8 @@ import {
   Bot,
   Menu,
   X,
+  User,
+  LogOut,
 } from "lucide-react";
 
 interface SidebarLayoutProps {
@@ -20,6 +20,7 @@ interface SidebarLayoutProps {
 
 const sidebarItems = [
   { label: "Dashboard", icon: LayoutDashboard, href: "/" },
+  { label: "Profile", icon: User, href: "/profile" },
   { label: "Assessment", icon: BrainCircuit, href: "/assessment" },
   { label: "Roadmap", icon: Target, href: "/roadmap" },
   { label: "AI Mentor", icon: Bot, href: "/mentor" },
@@ -29,7 +30,48 @@ const sidebarItems = [
 
 export default function SidebarLayout({ children }: SidebarLayoutProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [user, setUser] = useState<{ name: string; email: string; careerGoal?: string } | null>(null);
   const pathname = usePathname();
+  const router = useRouter();
+
+  useEffect(() => {
+    const stored = localStorage.getItem("user");
+    if (!stored) {
+      router.push("/login");
+    } else {
+      try {
+        setUser(JSON.parse(stored));
+      } catch (e) {
+        localStorage.removeItem("user");
+        router.push("/login");
+      }
+    }
+  }, [router]);
+
+  const handleLogout = () => {
+    localStorage.removeItem("user");
+    router.push("/login");
+  };
+
+  const userInitials = user?.name
+    ? user.name
+        .split(" ")
+        .map((n) => n[0])
+        .join("")
+        .toUpperCase()
+        .slice(0, 2)
+    : "LM";
+
+  if (!user) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-950 text-white">
+        <div className="flex items-center gap-3">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-cyan-400 border-t-transparent" />
+          <span className="text-sm font-medium text-slate-400">Loading session...</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(34,211,238,0.12),_transparent_30%),radial-gradient(circle_at_top_right,_rgba(59,130,246,0.12),_transparent_28%),linear-gradient(to_bottom,_#020617,_#020617,_#000000)] text-white">
@@ -40,26 +82,85 @@ export default function SidebarLayout({ children }: SidebarLayoutProps) {
           onClick={() => setMobileMenuOpen(false)}
         />
         <aside
-          className={`absolute left-0 top-0 h-full w-[86%] max-w-sm border-r border-white/10 bg-slate-950/95 p-5 backdrop-blur-xl transition-transform duration-300 ${mobileMenuOpen ? "translate-x-0" : "-translate-x-full"}`}
+          className={`absolute left-0 top-0 h-full w-[86%] max-w-sm border-r border-white/10 bg-slate-950/95 p-5 backdrop-blur-xl flex flex-col justify-between transition-transform duration-300 ${mobileMenuOpen ? "translate-x-0" : "-translate-x-full"}`}
         >
-          <div className="mb-8 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-400 to-blue-500 text-sm font-bold text-slate-950">
-                LM
+          <div>
+            <div className="mb-8 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-400 to-blue-500 text-sm font-bold text-slate-950">
+                  LM
+                </div>
+                <div>
+                  <p className="text-lg font-semibold text-white">LearnMate AI</p>
+                  <p className="text-xs text-slate-400">Navigation</p>
+                </div>
               </div>
-              <div>
-                <p className="text-lg font-semibold text-white">LearnMate AI</p>
-                <p className="text-xs text-slate-400">Navigation</p>
+              <button
+                type="button"
+                onClick={() => setMobileMenuOpen(false)}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-white"
+                aria-label="Close menu"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <nav className="space-y-1">
+              {sidebarItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = pathname === item.href;
+                return (
+                  <Link
+                    key={item.label}
+                    href={item.href}
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium transition-all duration-300 ${
+                      isActive
+                        ? "bg-white/10 text-white shadow-[0_0_0_1px_rgba(255,255,255,0.08)]"
+                        : "text-slate-400 hover:bg-white/5 hover:text-white"
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" />
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </nav>
+          </div>
+
+          {/* User Profile Card & Logout at the bottom of Mobile Drawer */}
+          <div className="border-t border-white/10 pt-4 mt-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-blue-500 font-bold text-slate-950 text-xs">
+                {userInitials}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold truncate text-white">{user.name}</p>
+                <p className="text-xs truncate text-slate-400">{user.careerGoal || "Student"}</p>
               </div>
             </div>
             <button
-              type="button"
-              onClick={() => setMobileMenuOpen(false)}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-white"
-              aria-label="Close menu"
+              onClick={handleLogout}
+              className="flex w-full items-center gap-3 rounded-2xl border border-rose-500/20 bg-rose-500/5 px-4 py-3 text-sm font-medium text-rose-300 transition-all hover:bg-rose-500/10 hover:text-rose-200"
             >
-              <X className="h-5 w-5" />
+              <LogOut className="h-4 w-4" />
+              Logout
             </button>
+          </div>
+        </aside>
+      </div>
+
+      {/* Desktop Sidebar */}
+      <aside className="hidden h-screen w-72 flex-col border-r border-white/10 bg-slate-950/70 px-5 py-6 backdrop-blur-xl lg:flex shrink-0 justify-between">
+        <div>
+          <div className="mb-8 flex items-center gap-3 px-2">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-400 to-blue-500 text-sm font-bold text-slate-950">
+              LM
+            </div>
+            <div>
+              <p className="text-lg font-semibold tracking-tight text-white">LearnMate AI</p>
+              <p className="text-xs text-slate-400">Adaptive learning dashboard</p>
+            </div>
           </div>
 
           <nav className="space-y-1">
@@ -70,7 +171,6 @@ export default function SidebarLayout({ children }: SidebarLayoutProps) {
                 <Link
                   key={item.label}
                   href={item.href}
-                  onClick={() => setMobileMenuOpen(false)}
                   className={`flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium transition-all duration-300 ${
                     isActive
                       ? "bg-white/10 text-white shadow-[0_0_0_1px_rgba(255,255,255,0.08)]"
@@ -83,41 +183,27 @@ export default function SidebarLayout({ children }: SidebarLayoutProps) {
               );
             })}
           </nav>
-        </aside>
-      </div>
-
-      {/* Desktop Sidebar */}
-      <aside className="hidden h-screen w-72 flex-col border-r border-white/10 bg-slate-950/70 px-5 py-6 backdrop-blur-xl lg:flex shrink-0">
-        <div className="mb-8 flex items-center gap-3 px-2">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-400 to-blue-500 text-sm font-bold text-slate-950">
-            LM
-          </div>
-          <div>
-            <p className="text-lg font-semibold tracking-tight text-white">LearnMate AI</p>
-            <p className="text-xs text-slate-400">Adaptive learning dashboard</p>
-          </div>
         </div>
 
-        <nav className="space-y-1 flex-1">
-          {sidebarItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = pathname === item.href;
-            return (
-              <Link
-                key={item.label}
-                href={item.href}
-                className={`flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium transition-all duration-300 ${
-                  isActive
-                    ? "bg-white/10 text-white shadow-[0_0_0_1px_rgba(255,255,255,0.08)]"
-                    : "text-slate-400 hover:bg-white/5 hover:text-white"
-                }`}
-              >
-                <Icon className="h-4 w-4" />
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
+        {/* User Profile Card & Logout at the bottom of Desktop Sidebar */}
+        <div className="border-t border-white/10 pt-4 mt-6">
+          <div className="flex items-center gap-3 mb-4 px-2">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-blue-500 font-bold text-slate-950 text-xs shadow-md">
+              {userInitials}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold truncate text-white">{user.name}</p>
+              <p className="text-xs truncate text-slate-400">{user.careerGoal || "Student"}</p>
+            </div>
+          </div>
+          <button
+            onClick={handleLogout}
+            className="flex w-full items-center gap-3 rounded-2xl border border-rose-500/20 bg-rose-500/5 px-4 py-3 text-sm font-medium text-rose-300 transition-all hover:bg-rose-500/10 hover:text-rose-200"
+          >
+            <LogOut className="h-4 w-4" />
+            Logout
+          </button>
+        </div>
       </aside>
 
       {/* Main Content Area */}

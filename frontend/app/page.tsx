@@ -114,13 +114,16 @@ export default function Home() {
       setError(null);
 
       try {
+        const storedUser = localStorage.getItem("user");
+        const email = storedUser ? JSON.parse(storedUser).email : "";
+        
         const [assessmentResponse, roadmapResponse] = await Promise.all([
-          fetch(`/api/assessment`, {
+          fetch(`/api/assessment?email=${encodeURIComponent(email)}`, {
             method: "GET",
             headers: { "Content-Type": "application/json" },
             signal: controller.signal,
           }),
-          fetch(`/api/roadmap`, {
+          fetch(`/api/roadmap?email=${encodeURIComponent(email)}`, {
             method: "GET",
             headers: { "Content-Type": "application/json" },
             signal: controller.signal,
@@ -224,12 +227,15 @@ export default function Home() {
           onClick={() => {
             setLoading(true);
             setError(null);
-            fetch(`/api/assessment`, { method: "GET" })
+            const storedUser = localStorage.getItem("user");
+            const email = storedUser ? JSON.parse(storedUser).email : "";
+            
+            fetch(`/api/assessment?email=${encodeURIComponent(email)}`, { method: "GET" })
               .then(res => res.json())
               .then(payload => {
                 const assessmentData = payload.data;
                 setAssessment(assessmentData);
-                return fetch(`/api/roadmap`, { method: "GET" })
+                return fetch(`/api/roadmap?email=${encodeURIComponent(email)}`, { method: "GET" })
                   .then(res => res.json())
                   .then(roadmapPayload => {
                     const roadmapData = roadmapPayload.data;

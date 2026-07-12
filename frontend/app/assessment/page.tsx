@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import SidebarLayout from "@/components/layout/SidebarLayout";
+
 import { BrainCircuit, Loader2, Sparkles, Target } from "lucide-react";
 
 type CurrentSkill = "Beginner" | "Intermediate" | "Advanced";
@@ -44,14 +45,42 @@ export default function AssessmentPage() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AssessmentResult | null>(null);
 
+  useEffect(() => {
+    const stored = localStorage.getItem("user");
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        if (parsed.name) setName(parsed.name);
+        if (parsed.careerGoal) setCareerGoal(parsed.careerGoal);
+        if (parsed.currentSkill) setCurrentSkill(parsed.currentSkill);
+        if (parsed.weeklyHours) setWeeklyHours(parsed.weeklyHours);
+        if (parsed.learningStyle) setLearningStyle(parsed.learningStyle);
+        if (parsed.preferredLanguage) setPreferredLanguage(parsed.preferredLanguage);
+        if (parsed.interests && Array.isArray(parsed.interests)) {
+          setInterests(parsed.interests.join(", "));
+        }
+      } catch (e) {
+        console.error("Error loading user from localStorage:", e);
+      }
+    }
+  }, []);
+
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setLoading(true);
     setError(null);
     setResult(null);
 
+    const stored = localStorage.getItem("user");
+    const email = stored ? JSON.parse(stored).email : "";
+
     try {
-      const response = await fetch("/api/assessment", {
+      const interestsArray = interests
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+
+      const response = await fetch(`/api/assessment?email=${encodeURIComponent(email)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -61,10 +90,7 @@ export default function AssessmentPage() {
           weeklyHours: Number(weeklyHours),
           learningStyle,
           preferredLanguage,
-          interests: interests
-            .split(",")
-            .map((item) => item.trim())
-            .filter(Boolean),
+          interests: interestsArray,
         }),
       });
 
@@ -77,7 +103,24 @@ export default function AssessmentPage() {
         throw new Error("Assessment response was empty.");
       }
 
-      setResult(payload.data as AssessmentResult);
+      const data = payload.data as AssessmentResult;
+      setResult(data);
+
+      // Proactively update the user's stored profile details so they sync immediately on page reloads/views
+      if (stored) {
+        const currentUser = JSON.parse(stored);
+        const updatedUser = {
+          ...currentUser,
+          careerGoal,
+          currentSkill,
+          weeklyHours: Number(weeklyHours),
+          learningStyle,
+          preferredLanguage,
+          interests: interestsArray,
+          skillScore: data.skillScore
+        };
+        localStorage.setItem("user", JSON.stringify(updatedUser));
+      }
     } catch (submitError) {
       setError(
         submitError instanceof Error
@@ -88,6 +131,7 @@ export default function AssessmentPage() {
       setLoading(false);
     }
   }
+
 
   return (
     <SidebarLayout>

@@ -42,6 +42,20 @@ export default function RoadmapPage() {
   const [roadmap, setRoadmap] = useState<RoadmapData | null>(null);
 
   useEffect(() => {
+    const stored = localStorage.getItem("user");
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        if (parsed.careerGoal) setCareerGoal(parsed.careerGoal);
+        if (parsed.currentSkill) setCurrentSkill(parsed.currentSkill);
+        if (parsed.weeklyHours) setWeeklyHours(parsed.weeklyHours);
+      } catch (e) {
+        console.error("Error loading user profile in roadmap:", e);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
     const controller = new AbortController();
 
     async function fetchRoadmap() {
@@ -49,15 +63,20 @@ export default function RoadmapPage() {
       setError(null);
 
       try {
+        const stored = localStorage.getItem("user");
+        const email = stored ? JSON.parse(stored).email : "";
+
         const params = new URLSearchParams({
           careerGoal,
           currentSkill,
           weeklyHours: String(weeklyHours),
+          email,
         });
 
         const response = await fetch(`/api/roadmap?${params.toString()}`, {
           signal: controller.signal,
         });
+
 
         if (!response.ok) throw new Error("Unable to load roadmap.");
 

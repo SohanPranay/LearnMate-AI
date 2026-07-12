@@ -41,7 +41,7 @@ DEFAULT_ASSESSMENT = {
 }
 
 # Global in-memory cache, initialized from DB if possible
-latest_assessment = mongo_db.get_latest_assessment()
+import hashlib
 
 class StudentProfile(BaseModel):
     name: str
@@ -62,42 +62,211 @@ class ChatRequest(BaseModel):
     skillLevel: Optional[str] = "Beginner"
     history: Optional[List[ChatHistoryMessage]] = []
 
+class RegisterRequest(BaseModel):
+    name: str
+    email: str
+    password: str
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+class SkillItem(BaseModel):
+    name: str
+    level: str # "Learning" or "Mastered"
+
+class ProfileUpdateRequest(BaseModel):
+    skills: List[SkillItem]
+    languages: List[str]
+    skillScore: int
+    careerGoal: Optional[str] = None
+    currentSkill: Optional[str] = None
+    weeklyHours: Optional[int] = None
+    learningStyle: Optional[str] = None
+    preferredLanguage: Optional[str] = None
+    interests: Optional[List[str]] = None
+
 @app.get("/")
 def get_root():
     return {"message": "LearnMate AI Backend Running"}
 
+# --- AUTH ROUTES ---
+
+@app.post("/api/auth/register")
+def register(req: RegisterRequest):
+    email_clean = req.email.strip().lower()
+    if not email_clean or not req.password or not req.name:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Name, email, and password are required."
+        )
+    
+    existing_user = mongo_db.find_user_by_email(email_clean)
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Account with this email already exists."
+        )
+        
+    password_hash = hashlib.sha256(req.password.encode()).hexdigest()
+    
+    user_doc = {
+        "name": req.name,
+        "email": email_clean,
+        "password_hash": password_hash,
+        "skills": [],
+        "languages": [],
+        "skillScore": 35,
+        "careerGoal": "Frontend Developer",
+        "currentSkill": "Beginner",
+        "weeklyHours": 5,
+        "learningStyle": "practical",
+        "preferredLanguage": "English",
+        "interests": []
+    }
+    
+    mongo_db.save_user(user_doc)
+    
+    # Return user details without password
+    user_doc.pop("password_hash", None)
+    return {
+        "success": True,
+        "message": "User registered successfully.",
+        "user": user_doc
+    }
+
+@app.post("/api/auth/login")
+def login(req: LoginRequest):
+    email_clean = req.email.strip().lower()
+    user = mongo_db.find_user_by_email(email_clean)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid email or password."
+        )
+        
+    password_hash = hashlib.sha256(req.password.encode()).hexdigest()
+    if user.get("password_hash") != password_hash:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid email or password."
+        )
+        
+    user.pop("password_hash", None)
+    return {
+        "success": True,
+        "message": "Login successful.",
+        "user": user
+    }
+
+# --- PROFILE ROUTES ---
+
+@app.get("/api/profile")
+def get_profile(email: Optional[str] = Query(None)):
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email parameter is required."
+        )
+    user = mongo_db.find_user_by_email(email)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User profile not found."
+        )
+    user.pop("password_hash", None)
+    return {
+        "success": True,
+        "user": user
+    }
+
+@app.post("/api/profile")
+def update_profile(req: ProfileUpdateRequest, email: Optional[str] = Query(None)):
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email parameter is required."
+        )
+    
+    profile_dict = req.model_dump(exclude_unset=True)
+    
+    # Check if there is an existing user
+    user = mongo_db.find_user_by_email(email)
+    if not user:
+         raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found."
+        )
+         
+    success = mongo_db.update_user_profile(email, profile_dict)
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update profile."
+        )
+        
+    updated_user = mongo_db.find_user_by_email(email)
+    updated_user.pop("password_hash", None)
+    return {
+        "success": True,
+        "message": "Profile updated successfully.",
+        "user": updated_user
+    }
+
 # --- ASSESSMENT ROUTES ---
 
 @app.get("/api/assessment")
-def get_assessment():
-    global latest_assessment
-    if not latest_assessment:
-        latest_assessment = mongo_db.get_latest_assessment() or DEFAULT_ASSESSMENT
+def get_assessment(email: Optional[str] = Query(None)):
+    assessment = mongo_db.get_latest_assessment(email)
+    if not assessment:
+        # Create a copy so we do not mutate the global DEFAULT_ASSESSMENT dictionary
+        assessment = dict(DEFAULT_ASSESSMENT)
+    else:
+        # Ensure it is a mutable dictionary copy
+        assessment = dict(assessment)
+        
+    if email:
+        user = mongo_db.find_user_by_email(email)
+        if user and "skillScore" in user:
+            assessment["skillScore"] = user["skillScore"]
+            
     return {
         "success": True,
-        "data": latest_assessment
+        "data": assessment
     }
 
+
 @app.post("/api/assessment")
-def submit_assessment(profile: StudentProfile):
-    global latest_assessment
+def submit_assessment(profile: StudentProfile, email: Optional[str] = Query(None)):
     try:
         profile_dict = profile.model_dump()
         
         # Call agent logic
         assessment = assess_student(profile_dict)
         
-        latest_assessment = {
+        assessment_data = {
             "student": profile_dict,
             **assessment
         }
         
-        # Save to MongoDB Atlas
-        mongo_db.save_assessment(latest_assessment)
+        # Save to MongoDB Atlas / memory
+        mongo_db.save_assessment(assessment_data, email)
+        
+        # If email is provided, also update their user profile details in DB
+        if email:
+            mongo_db.update_user_profile(email, {
+                "careerGoal": profile_dict["careerGoal"],
+                "currentSkill": profile_dict["currentSkill"],
+                "weeklyHours": profile_dict["weeklyHours"],
+                "learningStyle": profile_dict["learningStyle"],
+                "preferredLanguage": profile_dict["preferredLanguage"],
+                "interests": profile_dict["interests"],
+                "skillScore": assessment.get("skillScore", 35) # sync skillScore from assessment
+            })
         
         return {
             "success": True,
-            "data": latest_assessment
+            "data": assessment_data
         }
     except Exception as e:
         print("Assessment Submit Error:", e)
@@ -114,18 +283,16 @@ def get_roadmap_endpoint(
     currentSkill: Optional[str] = None,
     weeklyHours: Optional[int] = None,
     learningStyle: Optional[str] = None,
-    interests: Optional[List[str]] = Query(None)
+    interests: Optional[List[str]] = Query(None),
+    email: Optional[str] = Query(None)
 ):
-    global latest_assessment
-    if not latest_assessment:
-        latest_assessment = mongo_db.get_latest_assessment() or DEFAULT_ASSESSMENT
-        
-    student_profile = latest_assessment.get("student", DEFAULT_ASSESSMENT["student"])
+    assessment = mongo_db.get_latest_assessment(email) or DEFAULT_ASSESSMENT
+    student_profile = assessment.get("student", DEFAULT_ASSESSMENT["student"])
     
     goal = careerGoal or student_profile.get("careerGoal", "Frontend Developer")
     skill = currentSkill or student_profile.get("currentSkill", "Beginner")
     hours = weeklyHours or student_profile.get("weeklyHours", 5)
-    style = learning_style or student_profile.get("learningStyle", "practical")
+    style = learningStyle or student_profile.get("learningStyle", "practical")
     
     # Handle array formatting from queries
     user_interests = interests or student_profile.get("interests", [])
@@ -145,7 +312,7 @@ def get_roadmap_endpoint(
 
     try:
         # Check cache / db first
-        cached_roadmap = mongo_db.get_latest_roadmap(goal)
+        cached_roadmap = mongo_db.get_latest_roadmap(goal, email)
         if cached_roadmap:
             return {
                 "success": True,
@@ -161,7 +328,7 @@ def get_roadmap_endpoint(
         })
         
         # Save to DB
-        mongo_db.save_roadmap(roadmap, goal)
+        mongo_db.save_roadmap(roadmap, goal, email)
         
         return {
             "success": True,
@@ -180,6 +347,7 @@ def patch_roadmap():
         "success": True,
         "message": "Roadmap updated successfully."
     }
+
 
 # --- CHAT ROUTES ---
 
