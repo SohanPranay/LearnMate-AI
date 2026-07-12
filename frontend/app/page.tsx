@@ -81,11 +81,19 @@ function ErrorPanel({ message }: { message: string }) {
   );
 }
 
+interface Task {
+  id: string;
+  text: string;
+  category: string;
+  completed: boolean;
+}
+
 export default function Home() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [assessment, setAssessment] = useState<AssessmentData | null>(null);
   const [roadmap, setRoadmap] = useState<RoadmapData | null>(null);
+  const [tasks, setTasks] = useState<Task[]>([]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -124,6 +132,40 @@ export default function Home() {
 
         setAssessment(assessmentData);
         setRoadmap(roadmapData);
+
+        // Load or initialize tasks for the selected stream
+        const careerGoal = (assessmentData as any).student?.careerGoal || "Frontend Developer";
+        const localTasksKey = `tasks_${careerGoal}`;
+        const savedTasks = localStorage.getItem(localTasksKey);
+        
+        if (savedTasks) {
+          setTasks(JSON.parse(savedTasks));
+        } else {
+          const weeklyPlan = roadmapData.weeklyPlan || [];
+          const mappedTasks: Task[] = [];
+          weeklyPlan.forEach((w: any, index: number) => {
+            mappedTasks.push({
+              id: `t-topic-${index}`,
+              text: `Week ${w.week}: Master ${w.topic}`,
+              category: "Roadmap",
+              completed: false
+            });
+            mappedTasks.push({
+              id: `t-proj-${index}`,
+              text: `Week ${w.week} Project: ${w.project}`,
+              category: "Project",
+              completed: false
+            });
+            mappedTasks.push({
+              id: `t-quiz-${index}`,
+              text: `Week ${w.week} Quiz: ${w.quiz}`,
+              category: "Quiz",
+              completed: false
+            });
+          });
+          setTasks(mappedTasks);
+          localStorage.setItem(localTasksKey, JSON.stringify(mappedTasks));
+        }
       } catch (fetchError) {
         if ((fetchError as Error).name === "AbortError") {
           return;
@@ -145,14 +187,19 @@ export default function Home() {
   }, []);
 
   const progressPercent = useMemo(() => {
-    if (!roadmap || roadmap.weeklyPlan.length === 0) {
+    if (tasks.length === 0) {
       return 0;
     }
+    const completedCount = tasks.filter((t) => t.completed).length;
+    return Math.round((completedCount / tasks.length) * 100);
+  }, [tasks]);
 
-    const denominator = roadmap.weeklyPlan.length;
-    const numerator = roadmap.milestones.length > 0 ? Math.min(roadmap.milestones.length, denominator) : 1;
-    return Math.max(10, Math.round((numerator / denominator) * 100));
-  }, [roadmap]);
+  const dynamicSkillScore = useMemo(() => {
+    if (!assessment) return 35;
+    const baseScore = assessment.skillScore || 35;
+    const remainingScore = 100 - baseScore;
+    return baseScore + Math.round((progressPercent / 100) * remainingScore);
+  }, [assessment, progressPercent]);
 
   return (
     <SidebarLayout>
@@ -169,12 +216,47 @@ export default function Home() {
             fetch(`/api/assessment`, { method: "GET" })
               .then(res => res.json())
               .then(payload => {
-                setAssessment(payload.data);
-                return fetch(`/api/roadmap`, { method: "GET" });
-              })
-              .then(res => res.json())
-              .then(payload => {
-                setRoadmap(payload.data);
+                const assessmentData = payload.data;
+                setAssessment(assessmentData);
+                return fetch(`/api/roadmap`, { method: "GET" })
+                  .then(res => res.json())
+                  .then(roadmapPayload => {
+                    const roadmapData = roadmapPayload.data;
+                    setRoadmap(roadmapData);
+
+                    // Load tasks from localStorage for the refreshed careerGoal
+                    const careerGoal = assessmentData?.student?.careerGoal || "Frontend Developer";
+                    const localTasksKey = `tasks_${careerGoal}`;
+                    const savedTasks = localStorage.getItem(localTasksKey);
+                    if (savedTasks) {
+                      setTasks(JSON.parse(savedTasks));
+                    } else {
+                      const weeklyPlan = roadmapData?.weeklyPlan || [];
+                      const mappedTasks: Task[] = [];
+                      weeklyPlan.forEach((w: any, index: number) => {
+                        mappedTasks.push({
+                          id: `t-topic-${index}`,
+                          text: `Week ${w.week}: Master ${w.topic}`,
+                          category: "Roadmap",
+                          completed: false
+                        });
+                        mappedTasks.push({
+                          id: `t-proj-${index}`,
+                          text: `Week ${w.week} Project: ${w.project}`,
+                          category: "Project",
+                          completed: false
+                        });
+                        mappedTasks.push({
+                          id: `t-quiz-${index}`,
+                          text: `Week ${w.week} Quiz: ${w.quiz}`,
+                          category: "Quiz",
+                          completed: false
+                        });
+                      });
+                      setTasks(mappedTasks);
+                      localStorage.setItem(localTasksKey, JSON.stringify(mappedTasks));
+                    }
+                  });
               })
               .catch(() => {
                 setError("Failed to refresh data.");
@@ -199,7 +281,7 @@ export default function Home() {
             <>
               <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <DashboardCard title="Skill Score" icon={<TrendingUp className="h-5 w-5 text-cyan-300" />}>
-                  <p className="text-4xl font-semibold tracking-tight text-white">{assessment.skillScore}</p>
+                  <p className="text-4xl font-semibold tracking-tight text-white">{dynamicSkillScore}</p>
                   <p className="mt-2 text-sm text-slate-400">Difficulty: {assessment.difficulty}</p>
                 </DashboardCard>
 

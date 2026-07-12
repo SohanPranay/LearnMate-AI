@@ -23,38 +23,54 @@ export default function TasksPage() {
   const [newTaskText, setNewTaskText] = useState("");
   const [newTaskCategory, setNewTaskCategory] = useState("Custom");
   const [loading, setLoading] = useState(true);
+  const [careerGoal, setCareerGoal] = useState("Frontend Developer");
 
   useEffect(() => {
     async function loadTasks() {
       try {
-        const res = await fetch("/api/roadmap");
-        if (!res.ok) throw new Error("Failed to fetch roadmap.");
-        const payload = await res.json();
-        const weeklyPlan = payload?.data?.weeklyPlan || [];
+        const assessmentRes = await fetch("/api/assessment");
+        if (!assessmentRes.ok) throw new Error("Failed to fetch assessment.");
+        const assessmentPayload = await assessmentRes.json();
+        const student = assessmentPayload?.data?.student;
+        const currentGoal = student?.careerGoal || "Frontend Developer";
+        setCareerGoal(currentGoal);
+
+        const localTasksKey = `tasks_${currentGoal}`;
+        const savedTasks = localStorage.getItem(localTasksKey);
         
-        const mappedTasks: Task[] = [];
-        weeklyPlan.forEach((w: WeeklyPlanItem, index: number) => {
-          mappedTasks.push({
-            id: `t-topic-${index}`,
-            text: `Week ${w.week}: Master ${w.topic}`,
-            category: "Roadmap",
-            completed: false
+        if (savedTasks) {
+          setTasks(JSON.parse(savedTasks));
+        } else {
+          const res = await fetch("/api/roadmap");
+          if (!res.ok) throw new Error("Failed to fetch roadmap.");
+          const payload = await res.json();
+          const weeklyPlan = payload?.data?.weeklyPlan || [];
+          
+          const mappedTasks: Task[] = [];
+          weeklyPlan.forEach((w: WeeklyPlanItem, index: number) => {
+            mappedTasks.push({
+              id: `t-topic-${index}`,
+              text: `Week ${w.week}: Master ${w.topic}`,
+              category: "Roadmap",
+              completed: false
+            });
+            mappedTasks.push({
+              id: `t-proj-${index}`,
+              text: `Week ${w.week} Project: ${w.project}`,
+              category: "Project",
+              completed: false
+            });
+            mappedTasks.push({
+              id: `t-quiz-${index}`,
+              text: `Week ${w.week} Quiz: ${w.quiz}`,
+              category: "Quiz",
+              completed: false
+            });
           });
-          mappedTasks.push({
-            id: `t-proj-${index}`,
-            text: `Week ${w.week} Project: ${w.project}`,
-            category: "Project",
-            completed: false
-          });
-          mappedTasks.push({
-            id: `t-quiz-${index}`,
-            text: `Week ${w.week} Quiz: ${w.quiz}`,
-            category: "Quiz",
-            completed: false
-          });
-        });
-        
-        setTasks(mappedTasks);
+          
+          setTasks(mappedTasks);
+          localStorage.setItem(localTasksKey, JSON.stringify(mappedTasks));
+        }
       } catch (err) {
         console.error("Failed to load tasks", err);
       } finally {
@@ -75,18 +91,28 @@ export default function TasksPage() {
       completed: false,
     };
 
-    setTasks((prev) => [newTask, ...prev]);
+    setTasks((prev) => {
+      const updated = [newTask, ...prev];
+      localStorage.setItem(`tasks_${careerGoal}`, JSON.stringify(updated));
+      return updated;
+    });
     setNewTaskText("");
   }
 
   function toggleTask(id: string) {
-    setTasks((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, completed: !t.completed } : t))
-    );
+    setTasks((prev) => {
+      const updated = prev.map((t) => (t.id === id ? { ...t, completed: !t.completed } : t));
+      localStorage.setItem(`tasks_${careerGoal}`, JSON.stringify(updated));
+      return updated;
+    });
   }
 
   function deleteTask(id: string) {
-    setTasks((prev) => prev.filter((t) => t.id !== id));
+    setTasks((prev) => {
+      const updated = prev.filter((t) => t.id !== id);
+      localStorage.setItem(`tasks_${careerGoal}`, JSON.stringify(updated));
+      return updated;
+    });
   }
 
   const completedCount = tasks.filter((t) => t.completed).length;
